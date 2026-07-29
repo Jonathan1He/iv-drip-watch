@@ -120,7 +120,7 @@ root.innerHTML = `
         <label class='range-label' for='sensitivity'><span>灵敏度</span><output id='sensitivity-value'>55%</output></label>
         <input id='sensitivity' type='range' min='0' max='100' step='1' />
         <p class='range-hint'>灵敏度越高，越容易响应画面变化，也更容易受到反光和晃动干扰。</p>
-        <label class='range-label' for='alert-timeout'><span>无液滴报警时间</span><output id='alert-timeout-value'>45 秒</output></label>
+        <label class='range-label' for='alert-timeout'><span>无液滴报警时间</span><output id='alert-timeout-value'>20 秒</output></label>
         <input id='alert-timeout' type='range' min='15' max='180' step='1' />
         <div class='roi-controls'>
           <span class='subheading'>ROI 检测框（归一化范围）</span>

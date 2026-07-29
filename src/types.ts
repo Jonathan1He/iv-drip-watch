@@ -24,7 +24,7 @@ export interface UserSettings {
 
 export const DEFAULT_SETTINGS: UserSettings = {
   sensitivity: 0.55,
-  alertTimeoutSec: 45,
+  alertTimeoutSec: 20,
   vibrationEnabled: true,
   soundEnabled: true,
   roi: { x: 0.25, y: 0.2, width: 0.5, height: 0.6 },
