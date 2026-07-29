@@ -2,7 +2,7 @@
 
 摄像头 API 通常只在安全上下文可用：电脑本机 `localhost` 可以用于开发测试，手机访问时应使用 HTTPS 域名。局域网普通 HTTP 地址在多数手机浏览器中无法取得摄像头权限。
 
-本文只说明部署方式，不执行部署。以下域名、路径和服务器信息都是占位符。
+本文说明静态 HTTPS 部署方式。本仓库已经配置 GitHub Actions，可在推送 `master` 后自动构建并发布 GitHub Pages。以下自建服务器域名和路径仍使用占位符。
 
 ## 构建静态文件
 
@@ -20,6 +20,18 @@ npm run build
 3. 绑定你自己的 HTTPS 域名或平台提供的 HTTPS 预览域名。
 4. 在手机浏览器打开 HTTPS 地址，点击“打开摄像头”并授权。
 5. 检查 service worker、manifest 和图标请求没有被平台的重写规则拦截。
+
+## GitHub Pages（当前仓库已配置）
+
+仓库中的 `.github/workflows/deploy-pages.yml` 会在 `master` 分支有新提交时执行：
+
+1. 安装依赖并运行 `npm run test`、`npm run typecheck` 和 `npm run build`。
+2. 只上传构建后的 `dist/` 静态文件作为 Pages artifact。
+3. 使用 GitHub Pages 的 `github-pages` environment 发布。
+
+首次使用时，在仓库 `Settings → Pages` 中将发布源设为 `GitHub Actions`。发布成功后，GitHub 会在 Actions 运行记录和 Pages 设置中显示 HTTPS 访问地址。GitHub Pages 支持使用平台提供的 `github.io` 地址，不需要购买自定义域名。
+
+GitHub Pages 网站是公开网站；不要将密钥、真实患者数据、照片或视频提交到仓库。当前应用只在用户手机浏览器本地分析摄像头 ROI，不上传或保存摄像头视频。
 
 ## Caddy 示例
 
