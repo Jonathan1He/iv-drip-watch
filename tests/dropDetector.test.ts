@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DropDetector, type DropDetectorConfig } from '../src/detection/dropDetector';
+import {
+  deriveThresholds,
+  DropDetector,
+  type DropDetectorConfig,
+} from '../src/detection/dropDetector';
 
 const config: DropDetectorConfig = {
   highThreshold: 0.6,
@@ -17,6 +21,20 @@ function feed(detector: DropDetector, samples: Array<[number, number]>) {
 }
 
 describe('DropDetector', () => {
+  it('does not let one calibration outlier erase the usable threshold', () => {
+    const thresholds = deriveThresholds([0.004, 0.005, 0.006, 0.005, 0.004, 0.8], 0.55);
+
+    expect(thresholds.highThreshold).toBeGreaterThan(0.02);
+    expect(thresholds.highThreshold).toBeLessThan(0.2);
+  });
+
+  it('raises the threshold when the normal background stays noisy', () => {
+    const quiet = deriveThresholds([0.004, 0.005, 0.006, 0.005, 0.004], 0.55);
+    const noisy = deriveThresholds([0.01, 0.02, 0.015, 0.03, 0.012, 0.018], 0.55);
+
+    expect(noisy.highThreshold).toBeGreaterThan(quiet.highThreshold);
+  });
+
   it('recognizes one low-high-low drop waveform', () => {
     const events = feed(new DropDetector(config), [
       [0, 0.1],

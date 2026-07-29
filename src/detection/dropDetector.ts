@@ -29,21 +29,30 @@ export const DEFAULT_DETECTOR_CONFIG: DropDetectorConfig = {
   smoothingFactor: 0.35,
 };
 
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
 export function deriveThresholds(
   baselineScores: readonly number[],
   sensitivity: number,
 ): Pick<DropDetectorConfig, 'highThreshold' | 'lowThreshold'> {
   const usableScores = baselineScores.filter((score) => Number.isFinite(score));
-  const mean = usableScores.length
-    ? usableScores.reduce((sum, score) => sum + score, 0) / usableScores.length
-    : 0;
-  const variance = usableScores.length
-    ? usableScores.reduce((sum, score) => sum + (score - mean) ** 2, 0) / usableScores.length
-    : 0;
-  const standardDeviation = Math.sqrt(variance);
+  const baselineMedian = median(usableScores);
+  const absoluteDeviations = usableScores.map((score) => Math.abs(score - baselineMedian));
+  const medianAbsoluteDeviation = median(absoluteDeviations);
+  const robustNoiseEstimate = medianAbsoluteDeviation * 1.4826;
   const normalizedSensitivity = Math.min(1, Math.max(0, sensitivity));
   const margin = 0.04 - normalizedSensitivity * 0.02;
-  const highThreshold = Math.min(0.9, Math.max(0.025, mean + standardDeviation * 2 + margin));
+  const highThreshold = Math.min(
+    0.9,
+    Math.max(0.025, baselineMedian + robustNoiseEstimate * 3 + margin),
+  );
   const lowThreshold = Math.min(
     highThreshold - 0.005,
     Math.max(0.01, highThreshold * (0.65 - normalizedSensitivity * 0.15)),

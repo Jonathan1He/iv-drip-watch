@@ -26,7 +26,7 @@
 1. `CameraManager` 请求 `getUserMedia`，优先 `facingMode: environment`。
 2. 只把 ROI 画到隐藏 Canvas，再缩放为 64×64 并转为灰度数组。
 3. `calculateActivityScore` 统计超过像素差阈值的像素比例，得到 0–1 的活动分数。
-4. `DropDetector` 对分数平滑；超过高阈值开始候选事件，回落低阈值结束事件。
+4. `DropDetector` 对分数平滑；校准阈值使用中位数与 MAD 估计背景噪声；超过高阈值开始候选事件，回落低阈值结束事件。
 5. 候选事件必须落在 30–1000 毫秒并通过 500 毫秒防抖，才记为一滴。
 6. `calculateDripRate` 清理 60 秒窗口外的时间，用相邻间隔中位数估计滴/分钟。
 7. 首次有效液滴后启动停滴计时，达到配置时长触发 `AlarmManager`；报警只由用户确认并静音解除。
@@ -81,3 +81,4 @@ npm run build
 - [项目结构与调用链](docs/PROJECT_STRUCTURE.md)
 - [HTTPS 部署](docs/DEPLOY_HTTPS.md)
 - [测试指南](docs/TESTING_GUIDE.md)
+- [开源参考与采用边界](docs/PRIOR_ART.md)

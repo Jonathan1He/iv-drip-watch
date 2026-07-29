@@ -10,6 +10,7 @@
 - `public/`：Vite 原样复制的 manifest、service worker 和图标占位。
 - `tests/`：Vitest 纯逻辑自动化测试。
 - `docs/`：实现、部署和测试说明。
+- `docs/PRIOR_ART.md`：开源项目/研究参考、采用点和许可证边界。
 
 ## 主要文件
 
@@ -38,7 +39,7 @@ Canvas 64×64 灰度数组
         ↓
 前后帧像素差 → activityScore 0–1
         ↓
-平滑 + 高/低阈值迟滞 + 时长/防抖
+中位数/MAD 校准 + 平滑 + 高/低阈值迟滞 + 时长/防抖
         ↓
 有效液滴时间戳
         ↓
