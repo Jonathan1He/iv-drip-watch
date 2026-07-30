@@ -1,8 +1,10 @@
 import { AlarmManager } from './alarm/alarmManager';
+import { resetAlarmCycle, type AlarmCycleState } from './alarm/alarmCycle';
 import { CameraError, CameraManager } from './camera/cameraManager';
 import {
-  calculateActivityScore,
+  calculateActivityMeasurement,
   DEFAULT_FRAME_DIFFERENCE_OPTIONS,
+  isBroadMotion,
 } from './detection/frameDifference';
 import {
   DEFAULT_DETECTOR_CONFIG,
@@ -14,6 +16,7 @@ import { calculateDripRate, getRecentDropTimes } from './detection/dripRate';
 import { type AppStatus, type Roi, type UserSettings } from './types';
 import { loadSettings, saveSettings } from './utils/storage';
 import './styles.css';
+import { DEFAULT_SIMULATION_RATE, getNextSimulationDropAt } from './simulation/simulation';
 
 const appRoot = document.querySelector<HTMLElement>('#app');
 if (!appRoot) throw new Error('App root is missing');
@@ -171,9 +174,8 @@ let previousFrame: Uint8ClampedArray | null = null;
 let activityScore = 0;
 let dropTimes: number[] = [];
 let totalDrops = 0;
-let lastDropAt: number | null = null;
-let alarmAcknowledged = false;
-let simulationRate = 20;
+const alarmCycle: AlarmCycleState = { lastDropAt: null, acknowledged: false };
+let simulationRate = DEFAULT_SIMULATION_RATE;
 let simulationPulseUntil = 0;
 let nextSimulationDropAt = 0;
 let frameLoopId: number | null = null;
@@ -264,9 +266,9 @@ function render(now = Date.now()): void {
   const recentTimes = getRecentDropTimes(dropTimes, now);
   const rate = calculateDripRate(dropTimes, now);
   const remaining =
-    lastDropAt === null
+    alarmCycle.lastDropAt === null
       ? null
-      : Math.max(0, settings.alertTimeoutSec - (now - lastDropAt) / 1000);
+      : Math.max(0, settings.alertTimeoutSec - (now - alarmCycle.lastDropAt) / 1000);
   const calibrationProgress =
     status === 'calibrating' && calibrationStartedAt !== null
       ? clamp((now - calibrationStartedAt) / 5_000, 0, 1)
@@ -307,7 +309,7 @@ function render(now = Date.now()): void {
 
   $<HTMLElement>('#drip-rate').textContent = rate === null ? '—' : rate.toFixed(1);
   $<HTMLElement>('#recent-drops').textContent = String(recentTimes.length);
-  $<HTMLElement>('#last-drop').textContent = formatClock(lastDropAt);
+  $<HTMLElement>('#last-drop').textContent = formatClock(alarmCycle.lastDropAt);
   $<HTMLElement>('#alarm-countdown').textContent =
     status === 'calibrating' ? '校准中' : remaining === null ? '—' : String(Math.ceil(remaining));
   $<HTMLElement>('#activity-score').textContent = activityScore.toFixed(3);
@@ -371,16 +373,16 @@ function scheduleLoop(): void {
 function acceptDrop(timestamp: number): void {
   dropTimes.push(timestamp);
   totalDrops += 1;
-  lastDropAt = timestamp;
-  alarmAcknowledged = false;
+  alarmCycle.lastDropAt = timestamp;
+  alarmCycle.acknowledged = false;
 }
 
 function checkAlarm(now: number): void {
   if (
     status === 'monitoring' &&
-    lastDropAt !== null &&
-    !alarmAcknowledged &&
-    now - lastDropAt >= settings.alertTimeoutSec * 1_000
+    alarmCycle.lastDropAt !== null &&
+    !alarmCycle.acknowledged &&
+    now - alarmCycle.lastDropAt >= settings.alertTimeoutSec * 1_000
   ) {
     status = 'alarming';
     alarm.start({ soundEnabled: settings.soundEnabled, vibrationEnabled: settings.vibrationEnabled });
@@ -391,7 +393,7 @@ function checkAlarm(now: number): void {
 function simulationScore(now: number): number {
   if (simulationRate > 0 && now >= nextSimulationDropAt && now >= simulationPulseUntil) {
     simulationPulseUntil = now + 320;
-    nextSimulationDropAt = now + 60_000 / simulationRate;
+    nextSimulationDropAt = getNextSimulationDropAt(now, simulationRate);
   }
   return now < simulationPulseUntil ? Math.min(1, detectorConfig.highThreshold + 0.45) : 0.005;
 }
@@ -401,19 +403,22 @@ function processFrame(): void {
   if (!monitoring) return;
   const now = Date.now();
   try {
+    let activityTrusted = true;
     if (simulationMode) {
       activityScore = simulationScore(now);
     } else {
       const canvas = $<HTMLCanvasElement>('#analysis-canvas');
       const currentFrame = camera.captureRoiGrayscale(canvas, settings.roi);
-      activityScore = previousFrame
-        ? calculateActivityScore(currentFrame, previousFrame, DEFAULT_FRAME_DIFFERENCE_OPTIONS)
-        : 0;
+      const measurement = previousFrame
+        ? calculateActivityMeasurement(currentFrame, previousFrame, DEFAULT_FRAME_DIFFERENCE_OPTIONS)
+        : { activityScore: 0, changedRegionFraction: 0 };
+      activityScore = measurement.activityScore;
+      activityTrusted = !isBroadMotion(measurement, detectorConfig.highThreshold);
       previousFrame = currentFrame;
     }
 
     if (status === 'calibrating') {
-      calibrationScores.push(activityScore);
+      if (activityTrusted) calibrationScores.push(activityScore);
       if (calibrationStartedAt !== null && now - calibrationStartedAt >= 5_000) {
         baselineScores = calibrationScores.slice();
         setThresholds();
@@ -424,8 +429,12 @@ function processFrame(): void {
         pageWarning = '校准完成；若背景变化明显，请调小 ROI 或降低灵敏度。';
       }
     } else if (status === 'monitoring' || status === 'alarming') {
-      const event = detector.process(activityScore, now);
-      if (event) acceptDrop(event.timestamp);
+      if (!activityTrusted) {
+        detector.cancelCandidate();
+      } else {
+        const event = detector.process(activityScore, now);
+        if (event) acceptDrop(event.timestamp);
+      }
       checkAlarm(now);
     }
   } catch (error) {
@@ -462,22 +471,28 @@ async function openCamera(): Promise<void> {
 }
 
 function enterSimulation(): void {
-  if (monitoring) stopMonitoring();
+  if (monitoring) {
+    stopMonitoring();
+  } else {
+    resetAlarmCycle(alarmCycle, () => alarm.stop());
+  }
   camera.stop();
   simulationMode = true;
   status = 'camera-ready';
   baselineScores = [0.004, 0.005, 0.006, 0.004];
   setThresholds();
-  nextSimulationDropAt = Date.now() + 60_000 / simulationRate;
+  simulationRate = DEFAULT_SIMULATION_RATE;
+  simulationPulseUntil = 0;
+  nextSimulationDropAt = getNextSimulationDropAt(Date.now(), simulationRate);
   pageWarning = '模拟模式不会打开摄像头，所有事件仍使用同一套滴液检测和报警逻辑。';
   render();
 }
 
 async function startMonitoring(): Promise<void> {
   if ((!simulationMode && !camera.isOpen()) || monitoring) return;
+  resetAlarmCycle(alarmCycle, () => alarm.stop());
   await alarm.initialize();
   monitoring = true;
-  alarmAcknowledged = false;
   previousFrame = null;
   detector.reset();
   activityScore = 0;
@@ -485,7 +500,7 @@ async function startMonitoring(): Promise<void> {
   if (simulationMode) {
     setThresholds();
     status = 'monitoring';
-    nextSimulationDropAt = Date.now() + 60_000 / simulationRate;
+    nextSimulationDropAt = getNextSimulationDropAt(Date.now(), simulationRate);
   } else {
     status = 'calibrating';
     calibrationStartedAt = Date.now();
@@ -500,7 +515,7 @@ function stopMonitoring(): void {
   monitoring = false;
   stopLoop();
   releaseWakeLock();
-  alarm.stop();
+  resetAlarmCycle(alarmCycle, () => alarm.stop());
   previousFrame = null;
   calibrationStartedAt = null;
   calibrationScores = [];
@@ -517,9 +532,11 @@ function stopApplication(): void {
 }
 
 function recalibrate(): void {
+  resetAlarmCycle(alarmCycle, () => alarm.stop());
   if (simulationMode) {
     baselineScores = [0.004, 0.005, 0.006, 0.004];
     setThresholds();
+    status = 'monitoring';
     pageWarning = '模拟模式已用默认背景重新校准。';
     render();
     return;
@@ -538,7 +555,7 @@ function recalibrate(): void {
 
 function confirmAlarm(): void {
   alarm.stop();
-  alarmAcknowledged = true;
+  alarmCycle.acknowledged = true;
   if (status === 'alarming') status = 'monitoring';
   pageWarning = '报警已确认并静音；后续请由医护人员确认原因。';
   render();
@@ -547,10 +564,8 @@ function confirmAlarm(): void {
 function resetStats(): void {
   dropTimes = [];
   totalDrops = 0;
-  lastDropAt = null;
-  alarmAcknowledged = false;
+  resetAlarmCycle(alarmCycle, () => alarm.stop());
   detector.reset();
-  alarm.stop();
   if (status === 'alarming') status = monitoring ? 'monitoring' : 'paused';
   pageWarning = '统计已重置。';
   render();
@@ -560,7 +575,7 @@ function triggerSimulationDrop(): void {
   if (!simulationMode || !monitoring || (status !== 'monitoring' && status !== 'alarming')) return;
   const now = Date.now();
   simulationPulseUntil = now + 320;
-  nextSimulationDropAt = now + 60_000 / Math.max(1, simulationRate);
+  nextSimulationDropAt = getNextSimulationDropAt(now, simulationRate);
 }
 
 function updateRoi(): void {
@@ -594,14 +609,14 @@ $<HTMLButtonElement>('#test-alarm').addEventListener('click', () => {
 $<HTMLButtonElement>('#simulate-drop').addEventListener('click', triggerSimulationDrop);
 $<HTMLButtonElement>('#stop-simulation').addEventListener('click', () => {
   simulationRate = 0;
-  nextSimulationDropAt = Number.POSITIVE_INFINITY;
+  nextSimulationDropAt = getNextSimulationDropAt(Date.now(), simulationRate);
   render();
 });
 
 document.querySelectorAll<HTMLButtonElement>('[data-rate]').forEach((button) => {
   button.addEventListener('click', () => {
     simulationRate = Number(button.dataset.rate ?? 20);
-    nextSimulationDropAt = Date.now() + 60_000 / simulationRate;
+    nextSimulationDropAt = getNextSimulationDropAt(Date.now(), simulationRate);
     render();
   });
 });

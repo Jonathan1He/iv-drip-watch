@@ -107,4 +107,14 @@ describe('DropDetector', () => {
 
     expect(events).toHaveLength(2);
   });
+
+  it('cancels the current candidate without creating an event', () => {
+    const detector = new DropDetector(config);
+    detector.process(0.1, 0);
+    detector.process(0.8, 100);
+    detector.cancelCandidate();
+
+    expect(detector.process(0.1, 500)).toBeNull();
+    expect(detector.getSnapshot().state).toBe('idle');
+  });
 });

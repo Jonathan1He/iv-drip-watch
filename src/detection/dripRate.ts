@@ -20,7 +20,7 @@ export function calculateDripRate(
   options: DripRateOptions = {},
 ): number | null {
   const recentTimes = getRecentDropTimes(dropTimes, now, options.windowMs);
-  const minSamples = Math.max(2, options.minSamples ?? 2);
+  const minSamples = Math.max(3, options.minSamples ?? 3);
   if (recentTimes.length < minSamples) return null;
 
   const intervals: number[] = [];

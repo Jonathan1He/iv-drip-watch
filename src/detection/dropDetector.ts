@@ -117,6 +117,13 @@ export class DropDetector {
     return event;
   }
 
+  cancelCandidate(): void {
+    this.state = 'idle';
+    this.smoothedScore = 0;
+    this.candidateStart = null;
+    this.candidateInvalid = false;
+  }
+
   reset(): void {
     this.state = 'idle';
     this.smoothedScore = 0;

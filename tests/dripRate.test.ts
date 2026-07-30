@@ -5,6 +5,7 @@ describe('calculateDripRate', () => {
   it('does not invent a rate when there is not enough data', () => {
     expect(calculateDripRate([], 0)).toBeNull();
     expect(calculateDripRate([0], 0)).toBeNull();
+    expect(calculateDripRate([0, 6000], 6000)).toBeNull();
   });
 
   it('returns the expected rate for stable intervals', () => {
