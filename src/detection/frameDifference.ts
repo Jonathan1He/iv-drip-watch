@@ -6,6 +6,7 @@ export const DEFAULT_FRAME_DIFFERENCE_OPTIONS: Required<FrameDifferenceOptions> 
   pixelDifferenceThreshold: 16,
 };
 const MOTION_GRID_SIZE = 5;
+const MIN_BROAD_MOTION_ACTIVITY_SCORE = 0.12;
 export interface ActivityMeasurement {
   activityScore: number;
   changedRegionFraction: number;
@@ -56,7 +57,7 @@ export function isBroadMotion(
   highThreshold: number,
   maxChangedRegionFraction = 0.55,
 ): boolean {
-  return measurement.activityScore >= Math.max(0, highThreshold)
+  return measurement.activityScore >= Math.max(MIN_BROAD_MOTION_ACTIVITY_SCORE, Math.max(0, highThreshold))
     && measurement.changedRegionFraction >= maxChangedRegionFraction;
 }
 
