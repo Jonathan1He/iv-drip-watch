@@ -1,4 +1,4 @@
-const CACHE_NAME = 'iv-drip-watch-shell-v1';
+const CACHE_NAME = 'iv-drip-watch-shell-v2';
 const SHELL_ASSETS = ['./', './index.html', './manifest.webmanifest', './icons/drop-icon.svg'];
 
 self.addEventListener('install', (event) => {
