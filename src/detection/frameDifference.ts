@@ -5,6 +5,7 @@ export interface FrameDifferenceOptions {
 export const DEFAULT_FRAME_DIFFERENCE_OPTIONS: Required<FrameDifferenceOptions> = {
   pixelDifferenceThreshold: 16,
 };
+const MOTION_GRID_SIZE = 5;
 export interface ActivityMeasurement {
   activityScore: number;
   changedRegionFraction: number;
@@ -31,26 +32,22 @@ export function calculateActivityMeasurement(
     options.pixelDifferenceThreshold ?? DEFAULT_FRAME_DIFFERENCE_OPTIONS.pixelDifferenceThreshold,
   );
   let changedPixels = 0;
-  let minX = frameWidth;
-  let minY = frameHeight;
-  let maxX = -1;
-  let maxY = -1;
+  const changedCells = new Set<number>();
 
   for (let index = 0; index < current.length; index += 1) {
     if (Math.abs(current[index] - previous[index]) < threshold) continue;
     changedPixels += 1;
     const x = index % frameWidth;
     const y = Math.floor(index / frameWidth);
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x);
-    maxY = Math.max(maxY, y);
+    const cellX = Math.min(MOTION_GRID_SIZE - 1, Math.floor((x * MOTION_GRID_SIZE) / frameWidth));
+    const cellY = Math.min(MOTION_GRID_SIZE - 1, Math.floor((y * MOTION_GRID_SIZE) / frameHeight));
+    changedCells.add(cellY * MOTION_GRID_SIZE + cellX);
   }
 
   const activityScore = changedPixels / current.length;
   const changedRegionFraction = changedPixels === 0
     ? 0
-    : ((maxX - minX + 1) * (maxY - minY + 1)) / (frameWidth * frameHeight);
+    : changedCells.size / (MOTION_GRID_SIZE * MOTION_GRID_SIZE);
   return { activityScore, changedRegionFraction };
 }
 
