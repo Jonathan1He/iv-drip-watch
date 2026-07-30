@@ -429,12 +429,10 @@ function processFrame(): void {
         pageWarning = '校准完成；若背景变化明显，请调小 ROI 或降低灵敏度。';
       }
     } else if (status === 'monitoring' || status === 'alarming') {
-      if (!activityTrusted) {
-        detector.cancelCandidate();
-      } else {
-        const event = detector.process(activityScore, now);
-        if (event) acceptDrop(event.timestamp);
-      }
+      // A fast local liquid event may look broad after camera scaling; let the
+      // detector's hysteresis and duration checks decide whether to count it.
+      const event = detector.process(activityScore, now);
+      if (event) acceptDrop(event.timestamp);
       checkAlarm(now);
     }
   } catch (error) {
